@@ -49,7 +49,11 @@
         </dependency>
         <dependency>
             <groupId>org.apache.dolphinscheduler</groupId>
-            <artifactId>dolphinscheduler-alert</artifactId>
+            <artifactId>dolphinscheduler-alert-server</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.dolphinscheduler</groupId>
+            <artifactId>dolphinscheduler-python</artifactId>
         </dependency>
     </dependencies>
 
