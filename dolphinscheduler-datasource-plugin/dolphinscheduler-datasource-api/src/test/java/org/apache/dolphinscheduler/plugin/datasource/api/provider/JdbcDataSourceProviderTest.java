@@ -18,6 +18,7 @@
 package org.apache.dolphinscheduler.plugin.datasource.api.provider;
 
 import org.apache.dolphinscheduler.plugin.datasource.api.datasource.mysql.MysqlConnectionParam;
+import org.apache.dolphinscheduler.spi.enums.DbType;
 
 import org.junit.Assert;
 import org.junit.Test;
@@ -27,25 +28,25 @@ import org.powermock.api.mockito.PowerMockito;
 import org.powermock.core.classloader.annotations.PrepareForTest;
 import org.powermock.modules.junit4.PowerMockRunner;
 
-import com.alibaba.druid.pool.DruidDataSource;
+import com.zaxxer.hikari.HikariDataSource;
 
 @RunWith(PowerMockRunner.class)
-@PrepareForTest(value = {DruidDataSource.class, JdbcDataSourceProvider.class})
+@PrepareForTest(value = {HikariDataSource.class, JdbcDataSourceProvider.class})
 public class JdbcDataSourceProviderTest {
 
     @Test
     public void testCreateJdbcDataSource() {
         PowerMockito.mockStatic(JdbcDataSourceProvider.class);
-        DruidDataSource druidDataSource = PowerMockito.mock(DruidDataSource.class);
-        PowerMockito.when(JdbcDataSourceProvider.createJdbcDataSource(Mockito.any())).thenReturn(druidDataSource);
-        Assert.assertNotNull(JdbcDataSourceProvider.createJdbcDataSource(new MysqlConnectionParam()));
+        HikariDataSource dataSource = PowerMockito.mock(HikariDataSource.class);
+        PowerMockito.when(JdbcDataSourceProvider.createJdbcDataSource(Mockito.any(), Mockito.any())).thenReturn(dataSource);
+        Assert.assertNotNull(JdbcDataSourceProvider.createJdbcDataSource(new MysqlConnectionParam(), DbType.MYSQL));
     }
 
     @Test
     public void testCreateOneSessionJdbcDataSource() {
         PowerMockito.mockStatic(JdbcDataSourceProvider.class);
-        DruidDataSource druidDataSource = PowerMockito.mock(DruidDataSource.class);
-        PowerMockito.when(JdbcDataSourceProvider.createOneSessionJdbcDataSource(Mockito.any())).thenReturn(druidDataSource);
+        HikariDataSource dataSource = PowerMockito.mock(HikariDataSource.class);
+        PowerMockito.when(JdbcDataSourceProvider.createOneSessionJdbcDataSource(Mockito.any())).thenReturn(dataSource);
         Assert.assertNotNull(JdbcDataSourceProvider.createOneSessionJdbcDataSource(new MysqlConnectionParam()));
     }
 

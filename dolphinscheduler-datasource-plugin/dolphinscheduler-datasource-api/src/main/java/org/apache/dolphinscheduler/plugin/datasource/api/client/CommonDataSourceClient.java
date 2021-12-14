@@ -20,17 +20,19 @@ package org.apache.dolphinscheduler.plugin.datasource.api.client;
 import org.apache.dolphinscheduler.plugin.datasource.api.provider.JdbcDataSourceProvider;
 import org.apache.dolphinscheduler.spi.datasource.BaseConnectionParam;
 import org.apache.dolphinscheduler.spi.datasource.DataSourceClient;
+import org.apache.dolphinscheduler.spi.enums.DbType;
 import org.apache.dolphinscheduler.spi.utils.StringUtils;
 
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.concurrent.TimeUnit;
 
+import javax.sql.DataSource;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.alibaba.druid.pool.DruidDataSource;
 import com.google.common.base.Stopwatch;
 
 public class CommonDataSourceClient implements DataSourceClient {
@@ -42,14 +44,14 @@ public class CommonDataSourceClient implements DataSourceClient {
     public static final String COMMON_VALIDATION_QUERY = "select 1";
 
     protected final BaseConnectionParam baseConnectionParam;
-    protected DruidDataSource druidDataSource;
+    protected DataSource dataSource;
     protected JdbcTemplate jdbcTemplate;
 
-    public CommonDataSourceClient(BaseConnectionParam baseConnectionParam) {
+    public CommonDataSourceClient(BaseConnectionParam baseConnectionParam, DbType dbType) {
         this.baseConnectionParam = baseConnectionParam;
         preInit();
         checkEnv(baseConnectionParam);
-        initClient(baseConnectionParam);
+        initClient(baseConnectionParam, dbType);
         checkClient();
     }
 
@@ -62,9 +64,9 @@ public class CommonDataSourceClient implements DataSourceClient {
         checkUser(baseConnectionParam);
     }
 
-    protected void initClient(BaseConnectionParam baseConnectionParam) {
-        this.druidDataSource = JdbcDataSourceProvider.createJdbcDataSource(baseConnectionParam);
-        this.jdbcTemplate = new JdbcTemplate(druidDataSource);
+    protected void initClient(BaseConnectionParam baseConnectionParam, DbType dbType) {
+        this.dataSource = JdbcDataSourceProvider.createJdbcDataSource(baseConnectionParam, dbType);
+        this.jdbcTemplate = new JdbcTemplate(dataSource);
     }
 
     protected void checkUser(BaseConnectionParam baseConnectionParam) {
@@ -110,7 +112,7 @@ public class CommonDataSourceClient implements DataSourceClient {
     @Override
     public Connection getConnection() {
         try {
-            return this.druidDataSource.getConnection();
+            return this.dataSource.getConnection();
         } catch (SQLException e) {
             logger.error("get druidDataSource Connection fail SQLException: {}", e.getMessage(), e);
             return null;
@@ -120,8 +122,7 @@ public class CommonDataSourceClient implements DataSourceClient {
     @Override
     public void close() {
         logger.info("do close dataSource.");
-        this.druidDataSource.close();
-        this.druidDataSource = null;
+        this.dataSource = null;
         this.jdbcTemplate = null;
     }
 

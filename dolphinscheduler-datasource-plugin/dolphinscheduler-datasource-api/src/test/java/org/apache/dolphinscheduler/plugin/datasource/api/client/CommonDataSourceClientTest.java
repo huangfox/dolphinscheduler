@@ -20,6 +20,7 @@ package org.apache.dolphinscheduler.plugin.datasource.api.client;
 import org.apache.dolphinscheduler.plugin.datasource.api.datasource.mysql.MysqlConnectionParam;
 import org.apache.dolphinscheduler.plugin.datasource.api.provider.JdbcDataSourceProvider;
 import org.apache.dolphinscheduler.spi.datasource.BaseConnectionParam;
+import org.apache.dolphinscheduler.spi.enums.DbType;
 
 import java.sql.Connection;
 
@@ -34,11 +35,11 @@ import org.powermock.core.classloader.annotations.SuppressStaticInitializationFo
 import org.powermock.modules.junit4.PowerMockRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
 
-import com.alibaba.druid.pool.DruidDataSource;
+import com.zaxxer.hikari.HikariDataSource;
 
 @RunWith(PowerMockRunner.class)
 @SuppressStaticInitializationFor("org.apache.dolphinscheduler.plugin.datasource.api.client.CommonDataSourceClient")
-@PrepareForTest(value = {DruidDataSource.class, CommonDataSourceClient.class, JdbcDataSourceProvider.class, JdbcTemplate.class, Connection.class})
+@PrepareForTest(value = {HikariDataSource.class, CommonDataSourceClient.class, JdbcDataSourceProvider.class, JdbcTemplate.class, Connection.class})
 public class CommonDataSourceClientTest {
 
     @Mock
@@ -79,9 +80,9 @@ public class CommonDataSourceClientTest {
     @Test
     public void testInitClient() {
         BaseConnectionParam baseConnectionParam = new MysqlConnectionParam();
-        PowerMockito.doNothing().when(commonDataSourceClient).initClient(Mockito.any(BaseConnectionParam.class));
-        commonDataSourceClient.initClient(baseConnectionParam);
-        Mockito.verify(commonDataSourceClient).initClient(Mockito.any(BaseConnectionParam.class));
+        PowerMockito.doNothing().when(commonDataSourceClient).initClient(Mockito.any(BaseConnectionParam.class), Mockito.any());
+        commonDataSourceClient.initClient(baseConnectionParam, DbType.MYSQL);
+        Mockito.verify(commonDataSourceClient).initClient(Mockito.any(BaseConnectionParam.class), Mockito.any());
     }
 
     @Test

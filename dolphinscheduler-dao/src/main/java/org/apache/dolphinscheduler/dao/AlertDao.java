@@ -27,6 +27,8 @@ import org.apache.dolphinscheduler.dao.entity.ProcessAlertContent;
 import org.apache.dolphinscheduler.dao.entity.ProcessDefinition;
 import org.apache.dolphinscheduler.dao.entity.ProcessInstance;
 import org.apache.dolphinscheduler.dao.entity.ServerAlertContent;
+import org.apache.dolphinscheduler.dao.entity.TaskDefinition;
+import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.dao.mapper.AlertGroupMapper;
 import org.apache.dolphinscheduler.dao.mapper.AlertMapper;
 import org.apache.dolphinscheduler.dao.mapper.AlertPluginInstanceMapper;
@@ -39,8 +41,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -121,8 +121,14 @@ public class AlertDao {
         Alert alert = new Alert();
         List<ProcessAlertContent> processAlertContentList = new ArrayList<>(1);
         ProcessAlertContent processAlertContent = ProcessAlertContent.newBuilder()
+                .projectCode(processDefinition.getProjectCode())
+                .projectName(processDefinition.getProjectName())
+                .owner(processDefinition.getUserName())
                 .processId(processInstance.getId())
+                .processDefinitionCode(processInstance.getProcessDefinitionCode())
                 .processName(processInstance.getName())
+                .processStartTime(processInstance.getStartTime())
+                .processHost(processInstance.getHost())
                 .event(AlertEvent.TIME_OUT)
                 .warningLevel(AlertWarnLevel.MIDDLE)
                 .build();
@@ -143,28 +149,32 @@ public class AlertDao {
     /**
      * task timeout warn
      *
-     * @param alertGroupId alertGroupId
-     * @param processInstanceId processInstanceId
-     * @param processInstanceName processInstanceName
-     * @param taskId taskId
-     * @param taskName taskName
+     * @param processInstance processInstanceId
+     * @param taskInstance taskInstance
+     * @param taskDefinition taskDefinition
      */
-    public void sendTaskTimeoutAlert(int alertGroupId, int processInstanceId,
-                                     String processInstanceName, int taskId, String taskName) {
+    public void sendTaskTimeoutAlert(ProcessInstance processInstance, TaskInstance taskInstance, TaskDefinition taskDefinition) {
         Alert alert = new Alert();
         List<ProcessAlertContent> processAlertContentList = new ArrayList<>(1);
         ProcessAlertContent processAlertContent = ProcessAlertContent.newBuilder()
-                .processId(processInstanceId)
-                .processName(processInstanceName)
-                .taskId(taskId)
-                .taskName(taskName)
+                .projectCode(taskDefinition.getProjectCode())
+                .projectName(taskDefinition.getProjectName())
+                .owner(taskDefinition.getUserName())
+                .processId(processInstance.getId())
+                .processDefinitionCode(processInstance.getProcessDefinitionCode())
+                .processName(processInstance.getName())
+                .taskCode(taskInstance.getTaskCode())
+                .taskName(taskInstance.getName())
+                .taskType(taskInstance.getTaskType())
+                .taskStartTime(taskInstance.getStartTime())
+                .taskHost(taskInstance.getHost())
                 .event(AlertEvent.TIME_OUT)
                 .warningLevel(AlertWarnLevel.MIDDLE)
                 .build();
         processAlertContentList.add(processAlertContent);
         String content = JSONUtils.toJsonString(processAlertContentList);
         alert.setTitle("Task Timeout Warn");
-        saveTaskTimeoutAlert(alert, content, alertGroupId);
+        saveTaskTimeoutAlert(alert, content, processInstance.getWarningGroupId());
     }
 
     /**

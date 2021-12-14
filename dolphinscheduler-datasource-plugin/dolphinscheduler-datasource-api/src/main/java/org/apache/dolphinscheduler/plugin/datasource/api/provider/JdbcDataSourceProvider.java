@@ -17,15 +17,20 @@
 
 package org.apache.dolphinscheduler.plugin.datasource.api.provider;
 
+import org.apache.dolphinscheduler.plugin.datasource.api.utils.DataSourceUtils;
 import org.apache.dolphinscheduler.plugin.datasource.api.utils.PasswordUtils;
 import org.apache.dolphinscheduler.spi.datasource.BaseConnectionParam;
+import org.apache.dolphinscheduler.spi.enums.DbType;
 import org.apache.dolphinscheduler.spi.utils.Constants;
 import org.apache.dolphinscheduler.spi.utils.PropertyUtils;
+import org.apache.dolphinscheduler.spi.utils.StringUtils;
+
+import java.sql.Driver;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.alibaba.druid.pool.DruidDataSource;
+import com.zaxxer.hikari.HikariDataSource;
 
 /**
  * Jdbc Data Source Provider
@@ -34,51 +39,75 @@ public class JdbcDataSourceProvider {
 
     private static final Logger logger = LoggerFactory.getLogger(JdbcDataSourceProvider.class);
 
-    public static DruidDataSource createJdbcDataSource(BaseConnectionParam properties) {
-        logger.info("Creating DruidDataSource pool for maxActive:{}", PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MAX_ACTIVE, 50));
+    public static HikariDataSource createJdbcDataSource(BaseConnectionParam properties, DbType dbType) {
+        logger.info("Creating HikariDataSource pool for maxActive:{}", PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MAX_ACTIVE, 50));
+        HikariDataSource dataSource = new HikariDataSource();
 
-        DruidDataSource druidDataSource = new DruidDataSource();
+        //TODO Support multiple versions of data sources
+        ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+        loaderJdbcDriver(classLoader, properties, dbType);
 
-        druidDataSource.setDriverClassName(properties.getDriverClassName());
-        druidDataSource.setUrl(properties.getJdbcUrl());
-        druidDataSource.setUsername(properties.getUser());
-        druidDataSource.setPassword(PasswordUtils.decodePassword(properties.getPassword()));
+        dataSource.setDriverClassName(properties.getDriverClassName());
+        dataSource.setJdbcUrl(properties.getJdbcUrl());
+        dataSource.setUsername(properties.getUser());
+        dataSource.setPassword(PasswordUtils.decodePassword(properties.getPassword()));
 
-        druidDataSource.setMinIdle(PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MIN_IDLE, 5));
-        druidDataSource.setMaxActive(PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MAX_ACTIVE, 50));
-        druidDataSource.setTestOnBorrow(PropertyUtils.getBoolean(Constants.SPRING_DATASOURCE_TEST_ON_BORROW, false));
+        dataSource.setMinimumIdle(PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MIN_IDLE, 5));
+        dataSource.setMaximumPoolSize(PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MAX_ACTIVE, 50));
+        dataSource.setConnectionTestQuery(properties.getValidationQuery());
 
         if (properties.getProps() != null) {
-            properties.getProps().forEach(druidDataSource::addConnectionProperty);
+            properties.getProps().forEach(dataSource::addDataSourceProperty);
         }
 
-        logger.info("Creating DruidDataSource pool success.");
-        return druidDataSource;
+        logger.info("Creating HikariDataSource pool success.");
+        return dataSource;
     }
 
     /**
      * @return One Session Jdbc DataSource
      */
-    public static DruidDataSource createOneSessionJdbcDataSource(BaseConnectionParam properties) {
-        logger.info("Creating OneSession DruidDataSource pool for maxActive:{}", PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MAX_ACTIVE, 50));
+    public static HikariDataSource createOneSessionJdbcDataSource(BaseConnectionParam properties) {
+        logger.info("Creating OneSession HikariDataSource pool for maxActive:{}", PropertyUtils.getInt(Constants.SPRING_DATASOURCE_MAX_ACTIVE, 50));
 
-        DruidDataSource druidDataSource = new DruidDataSource();
+        HikariDataSource dataSource = new HikariDataSource();
 
-        druidDataSource.setDriverClassName(properties.getDriverClassName());
-        druidDataSource.setUrl(properties.getJdbcUrl());
-        druidDataSource.setUsername(properties.getUser());
-        druidDataSource.setPassword(PasswordUtils.decodePassword(properties.getPassword()));
+        dataSource.setDriverClassName(properties.getDriverClassName());
+        dataSource.setJdbcUrl(properties.getJdbcUrl());
+        dataSource.setUsername(properties.getUser());
+        dataSource.setPassword(PasswordUtils.decodePassword(properties.getPassword()));
 
-        druidDataSource.setMinIdle(1);
-        druidDataSource.setMaxActive(1);
-        druidDataSource.setTestOnBorrow(true);
+        dataSource.setMinimumIdle(1);
+        dataSource.setMaximumPoolSize(1);
+        dataSource.setConnectionTestQuery(properties.getValidationQuery());
 
         if (properties.getProps() != null) {
-            properties.getProps().forEach(druidDataSource::addConnectionProperty);
+            properties.getProps().forEach(dataSource::addDataSourceProperty);
         }
 
-        logger.info("Creating OneSession DruidDataSource pool success.");
-        return druidDataSource;
+        logger.info("Creating OneSession HikariDataSource pool success.");
+        return dataSource;
+    }
+
+    protected static void loaderJdbcDriver(ClassLoader classLoader, BaseConnectionParam properties, DbType dbType) {
+        String drv = StringUtils.isBlank(properties.getDriverClassName()) ? DataSourceUtils.getDatasourceProcessor(dbType).getDatasourceDriver() : properties.getDriverClassName();
+        try {
+            final Class<?> clazz = Class.forName(drv, true, classLoader);
+            final Driver driver = (Driver) clazz.newInstance();
+            if (!driver.acceptsURL(properties.getJdbcUrl())) {
+                logger.warn("Jdbc driver loading error. Driver {} cannot accept url.", drv);
+                throw new RuntimeException("Jdbc driver loading error.");
+            }
+            if (dbType.equals(DbType.MYSQL)) {
+                if (driver.getMajorVersion() >= 8) {
+                    properties.setDriverClassName(drv);
+                } else {
+                    properties.setDriverClassName(Constants.COM_MYSQL_JDBC_DRIVER);
+                }
+            }
+        } catch (final Exception e) {
+            logger.warn("The specified driver not suitable.");
+        }
     }
 
 }
