@@ -16,6 +16,7 @@
  */
 
 import { TaskType } from '@/views/projects/task/constants/task-type'
+export type { ITaskState } from '@/utils/types'
 
 export interface ProcessDefinition {
   id: number
@@ -79,7 +80,7 @@ export interface TaskDefinition {
   environmentCode: number
   failRetryTimes: number
   failRetryInterval: number
-  timeoutFlag: string
+  timeoutFlag: 'OPEN' | 'CLOSE'
   timeoutNotifyStrategy: string
   timeout: number
   delayTime: number
@@ -100,6 +101,25 @@ export interface WorkflowDefinition {
   processDefinition: ProcessDefinition
   processTaskRelationList: Connect[]
   taskDefinitionList: TaskDefinition[]
+}
+
+export interface WorkflowInstance {
+  name: string
+  state: string
+  dagData: WorkflowDefinition
+  commandType: string
+  commandParam: string
+  failureStrategy: string
+  processInstancePriority: string
+  workerGroup: string
+  warningType: string
+  warningGroupId: number
+}
+
+export interface EditWorkflowDefinition {
+  processDefinition: ProcessDefinition
+  processTaskRelationList: Connect[]
+  taskDefinitionList: NodeData[]
 }
 
 export interface Dragged {
@@ -125,10 +145,28 @@ export interface SaveForm {
   timeoutFlag: boolean
   timeout: number
   globalParams: GlobalParam[]
+  release: boolean
+  sync: boolean
 }
 
 export interface Location {
   taskCode: number
   x: number
   y: number
+}
+
+export interface IStartupParam {
+  commandType: string
+  commandParam: string
+  failureStrategy: string
+  processInstancePriority: string
+  workerGroup: string
+  warningType: string
+  warningGroupId: number
+}
+
+export interface IWorkflowTaskInstance {
+  id: number
+  taskCode: number
+  taskType: string
 }

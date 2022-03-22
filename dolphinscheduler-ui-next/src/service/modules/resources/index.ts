@@ -18,7 +18,6 @@
 import { axios, downloadFile } from '@/service/service'
 import {
   ResourceTypeReq,
-  UdfTypeReq,
   NameReq,
   FileNameReq,
   FullNameReq,
@@ -53,6 +52,13 @@ export function queryResourceById(
     url: `/resources/${id}`,
     method: 'get',
     params
+  })
+}
+
+export function queryCurrentResourceById(id: number): any {
+  return axios({
+    url: `/resources/${id}/query`,
+    method: 'get'
   })
 }
 
@@ -118,7 +124,9 @@ export function onlineCreateResource(
   })
 }
 
-export function queryResourceByProgramType(params: ResourceTypeReq): any {
+export function queryResourceByProgramType(
+  params: ResourceTypeReq & ProgramTypeReq
+): any {
   return axios({
     url: '/resources/query-by-type',
     method: 'get',

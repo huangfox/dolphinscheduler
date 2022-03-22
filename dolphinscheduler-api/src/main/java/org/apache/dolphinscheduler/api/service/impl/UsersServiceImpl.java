@@ -66,6 +66,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TimeZone;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
@@ -349,6 +350,8 @@ public class UsersServiceImpl extends BaseServiceImpl implements UsersService {
      * @param tenantId tenant id
      * @param phone phone
      * @param queue queue
+     * @param state state
+     * @param timeZone timeZone
      * @return update result code
      * @throws Exception exception
      */
@@ -360,7 +363,8 @@ public class UsersServiceImpl extends BaseServiceImpl implements UsersService {
                                           int tenantId,
                                           String phone,
                                           String queue,
-                                          int state) throws IOException {
+                                          int state,
+                                          String timeZone) throws IOException {
         Map<String, Object> result = new HashMap<>();
         result.put(Constants.STATUS, false);
 
@@ -411,6 +415,14 @@ public class UsersServiceImpl extends BaseServiceImpl implements UsersService {
         if (state == 0 && user.getState() != state && loginUser.getId() == user.getId()) {
             putMsg(result, Status.NOT_ALLOW_TO_DISABLE_OWN_ACCOUNT);
             return result;
+        }
+
+        if (StringUtils.isNotEmpty(timeZone)) {
+            if (!CheckUtils.checkTimeZone(timeZone)) {
+                putMsg(result, Status.TIME_ZONE_ILLEGAL, timeZone);
+                return result;
+            }
+            user.setTimeZone(timeZone);
         }
 
         user.setPhone(phone);
@@ -555,9 +567,9 @@ public class UsersServiceImpl extends BaseServiceImpl implements UsersService {
             return result;
         }
 
-        //if the selected projectIds are empty, delete all items associated with the user
+        projectUserMapper.deleteProjectRelation(0, userId);
+
         if (check(result, StringUtils.isEmpty(projectIds), Status.SUCCESS)) {
-            projectUserMapper.deleteProjectRelation(0, userId);
             return result;
         }
 
@@ -873,6 +885,11 @@ public class UsersServiceImpl extends BaseServiceImpl implements UsersService {
                 sb.append(alertGroups.get(alertGroups.size() - 1));
                 user.setAlertGroup(sb.toString());
             }
+        }
+
+        // add system default timezone if not user timezone
+        if (StringUtils.isEmpty(user.getTimeZone())) {
+            user.setTimeZone(TimeZone.getDefault().toZoneId().getId());
         }
 
         result.put(Constants.DATA_LIST, user);

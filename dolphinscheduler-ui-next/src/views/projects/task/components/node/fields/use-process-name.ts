@@ -17,13 +17,25 @@
 
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { querySimpleList } from '@/service/modules/process-definition'
+import {
+  querySimpleList,
+  queryProcessDefinitionByCode
+} from '@/service/modules/process-definition'
 import type { IJsonItem } from '../types'
 
-export function useProcessName(
-  projectCode: number,
+export function useProcessName({
+  model,
+  projectCode,
+  isCreate,
+  from,
+  processName
+}: {
+  model: { [field: string]: any }
+  projectCode: number
   isCreate: boolean
-): IJsonItem {
+  from?: number
+  processName?: number
+}): IJsonItem {
   const { t } = useI18n()
 
   const options = ref([] as { label: string; value: string }[])
@@ -32,30 +44,48 @@ export function useProcessName(
   const getProcessList = async () => {
     if (loading.value) return
     loading.value = true
-    try {
-      const res = await querySimpleList(projectCode)
-      options.value = res.map((option: { name: string; code: number }) => ({
-        label: option.name,
-        value: option.code
-      }))
-      loading.value = false
-    } catch (err) {
-      loading.value = false
-    }
+    const res = await querySimpleList(projectCode)
+    options.value = res.map((option: { name: string; code: number }) => ({
+      label: option.name,
+      value: option.code
+    }))
+    loading.value = false
+  }
+  const getProcessListByCode = async (processCode: number) => {
+    if (!processCode) return
+    const res = await queryProcessDefinitionByCode(processCode, projectCode)
+    model.definition = res
+  }
+
+  const onChange = (code: number) => {
+    getProcessListByCode(code)
   }
 
   onMounted(() => {
+    if (from === 1 && processName) {
+      getProcessListByCode(processName)
+    }
     getProcessList()
   })
 
   return {
     type: 'select',
-    field: 'processCode',
+    field: 'processName',
     span: 24,
     name: t('project.node.process_name'),
     props: {
       loading: loading,
-      disabled: !isCreate
+      disabled: !isCreate,
+      'on-update:value': onChange
+    },
+    validate: {
+      trigger: ['input', 'blur'],
+      required: true,
+      validator(validate: any, value: string) {
+        if (!value) {
+          return new Error(t('project.node.process_name_tips'))
+        }
+      }
     },
     options: options
   }

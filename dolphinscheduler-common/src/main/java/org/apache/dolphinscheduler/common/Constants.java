@@ -17,7 +17,7 @@
 
 package org.apache.dolphinscheduler.common;
 
-import org.apache.dolphinscheduler.common.enums.ExecutionStatus;
+import org.apache.dolphinscheduler.plugin.task.api.enums.ExecutionStatus;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.SystemUtils;
@@ -253,12 +253,7 @@ public final class Constants {
      * user name regex
      */
     public static final Pattern REGEX_USER_NAME = Pattern.compile("^[a-zA-Z0-9._-]{3,39}$");
-
-    /**
-     * email regex
-     */
-    public static final Pattern REGEX_MAIL_NAME = Pattern.compile("^([a-z0-9A-Z]+[_|\\-|\\.]?)+[a-z0-9A-Z]@([a-z0-9A-Z]+(-[a-z0-9A-Z]+)?\\.)+[a-zA-Z]{2,}$");
-
+    
     /**
      * read permission
      */
@@ -572,6 +567,8 @@ public final class Constants {
     public static final String QUEUE_NAME = "queueName";
     public static final int LOG_QUERY_SKIP_LINE_NUMBER = 0;
     public static final int LOG_QUERY_LIMIT = 4096;
+    public static final String BLOCKING_CONDITION = "blockingCondition";
+    public static final String ALERT_WHEN_BLOCKING = "alertWhenBlocking";
 
     /**
      * master/worker server use for zk

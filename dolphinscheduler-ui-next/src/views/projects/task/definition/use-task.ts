@@ -26,19 +26,26 @@ import { formatParams as formatData } from '../components/node/format-data'
 import type { ITaskData, INodeData, ISingleSaveReq, IRecord } from './types'
 
 export function useTask(projectCode: number) {
+  const initalTask = {
+    taskType: 'SHELL'
+  } as ITaskData
   const task = reactive({
     taskShow: false,
-    taskData: {
-      taskType: 'SHELL'
-    },
+    taskData: { ...initalTask },
     taskSaving: false,
     taskReadonly: false
   } as { taskShow: boolean; taskData: ITaskData; taskSaving: boolean; taskReadonly: boolean })
 
-  const formatParams = (data: INodeData): ISingleSaveReq => {
+  const formatParams = (data: INodeData, isCreate: boolean): ISingleSaveReq => {
     const params = formatData(data)
+    if (isCreate) {
+      return {
+        processDefinitionCode: params.processDefinitionCode,
+        upstreamCodes: params.upstreamCodes,
+        taskDefinitionJsonObj: JSON.stringify(params.taskDefinitionJsonObj)
+      }
+    }
     return {
-      processDefinitionCode: params.processDefinitionCode,
       upstreamCodes: params.upstreamCodes,
       taskDefinitionJsonObj: JSON.stringify(params.taskDefinitionJsonObj)
     }
@@ -53,45 +60,49 @@ export function useTask(projectCode: number) {
     task.taskShow = show
   }
   const onTaskSave = async (data: INodeData) => {
+    if (task.taskSaving) return
+    task.taskSaving = true
     try {
-      if (task.taskSaving) return
-      task.taskSaving = true
       if (data.id) {
         data.code &&
           (await updateWithUpstream(
             projectCode,
             data.code,
-            formatParams({ ...data, code: data.code })
+            formatParams({ ...data, code: data.code }, false)
           ))
       } else {
         const taskCode = await getTaskCode()
-        await saveSingle(projectCode, formatParams({ ...data, code: taskCode }))
+        await saveSingle(
+          projectCode,
+          formatParams({ ...data, code: taskCode }, true)
+        )
       }
 
       task.taskSaving = false
       return true
-    } catch (e) {
-      window.$message.error((e as Error).message)
+    } catch (err) {
       task.taskSaving = false
       return false
     }
   }
 
   const onEditTask = async (row: IRecord, readonly: boolean) => {
-    try {
-      const result = await queryTaskDefinitionByCode(row.taskCode, projectCode)
-      task.taskData = { ...result, processName: row.processDefinitionCode }
-      task.taskShow = true
-      task.taskReadonly = readonly
-    } catch (e) {
-      window.$message.error((e as Error).message)
-    }
+    const result = await queryTaskDefinitionByCode(row.taskCode, projectCode)
+    task.taskData = { ...result, processName: row.processDefinitionCode }
+    task.taskShow = true
+    task.taskReadonly = readonly
+  }
+
+  const onInitTask = () => {
+    task.taskData = { ...initalTask }
+    task.taskReadonly = false
   }
 
   return {
     task,
     onToggleShow,
     onTaskSave,
-    onEditTask
+    onEditTask,
+    onInitTask
   }
 }

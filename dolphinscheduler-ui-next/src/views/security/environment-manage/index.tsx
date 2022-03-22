@@ -105,7 +105,12 @@ const environmentManage = defineComponent({
         <NCard>
           <div class={styles['search-card']}>
             <div>
-              <NButton size='small' type='primary' onClick={handleModalChange}>
+              <NButton
+                size='small'
+                type='primary'
+                onClick={handleModalChange}
+                class='btn-create-environment'
+              >
                 {t('security.environment.create_environment')}
               </NButton>
             </div>
@@ -129,7 +134,12 @@ const environmentManage = defineComponent({
           </div>
         </NCard>
         <Card class={styles['table-card']}>
-          <NDataTable columns={this.columns} data={this.tableData} />
+          <NDataTable
+            row-class-name='items'
+            columns={this.columns}
+            data={this.tableData}
+            scrollX={this.tableWidth}
+          />
           <div class={styles.pagination}>
             <NPagination
               v-model:page={this.page}

@@ -21,6 +21,7 @@ import { Graph } from '@antv/x6'
 import { NODE, EDGE, X6_NODE_NAME, X6_EDGE_NAME } from './dag-config'
 import { debounce } from 'lodash'
 import { useResizeObserver } from '@vueuse/core'
+import ContextMenuTool from './dag-context-menu'
 
 interface Options {
   readonly: Ref<boolean>
@@ -45,6 +46,8 @@ export function useCanvasInit(options: Options) {
    * Graph Init, bind graph to the dom
    */
   function graphInit() {
+    Graph.registerNodeTool('contextmenu', ContextMenuTool, true)
+
     return new Graph({
       container: paper.value,
       selecting: {
@@ -98,6 +101,23 @@ export function useCanvasInit(options: Options) {
         highlight: true,
         createEdge() {
           return graph.value?.createEdge({ shape: X6_EDGE_NAME })
+        },
+        validateConnection(data) {
+          const { sourceCell, targetCell } = data
+
+          if (
+            sourceCell &&
+            targetCell &&
+            sourceCell.isNode() &&
+            targetCell.isNode()
+          ) {
+            const sourceData = sourceCell.getData()
+            if (!sourceData) return true
+            if (sourceData.taskType !== 'CONDITIONS') return true
+            return (graph.value?.getConnectedEdges(sourceCell).length || 0) <= 2
+          }
+
+          return true
         }
       },
       highlighting: {
