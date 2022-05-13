@@ -55,6 +55,14 @@ class ProcessDefinition(Base):
     """process definition object, will define process definition attribute, task, relation.
 
     TODO: maybe we should rename this class, currently use DS object name.
+
+    :param user: The user for current process definition. Will create a new one if it do not exists. If your
+        parameter ``project`` already exists but project's create do not belongs to ``user``, will grant
+        ``project`` to ``user`` automatically.
+    :param project: The project for current process definition. You could see the workflow in this project
+        thought Web UI after it :func:`submit` or :func:`run`. It will create a new project belongs to
+        ``user`` if it does not exists. And when ``project`` exists but project's create do not belongs
+        to ``user``, will grant `project` to ``user`` automatically.
     """
 
     # key attribute for identify ProcessDefinition object
@@ -72,6 +80,8 @@ class ProcessDefinition(Base):
         "_project",
         "_tenant",
         "worker_group",
+        "warning_type",
+        "warning_group_id",
         "timeout",
         "release_state",
         "param",
@@ -91,8 +101,9 @@ class ProcessDefinition(Base):
         user: Optional[str] = configuration.WORKFLOW_USER,
         project: Optional[str] = configuration.WORKFLOW_PROJECT,
         tenant: Optional[str] = configuration.WORKFLOW_TENANT,
-        queue: Optional[str] = configuration.WORKFLOW_QUEUE,
         worker_group: Optional[str] = configuration.WORKFLOW_WORKER_GROUP,
+        warning_type: Optional[str] = configuration.WORKFLOW_WARNING_TYPE,
+        warning_group_id: Optional[int] = 0,
         timeout: Optional[int] = 0,
         release_state: Optional[str] = ProcessDefinitionReleaseState.ONLINE,
         param: Optional[Dict] = None,
@@ -105,8 +116,15 @@ class ProcessDefinition(Base):
         self._user = user
         self._project = project
         self._tenant = tenant
-        self._queue = queue
         self.worker_group = worker_group
+        self.warning_type = warning_type
+        if warning_type.strip().upper() not in ("FAILURE", "SUCCESS", "ALL", "NONE"):
+            raise PyDSParamException(
+                "Parameter `warning_type` with unexpect value `%s`", warning_type
+            )
+        else:
+            self.warning_type = warning_type.strip().upper()
+        self.warning_group_id = warning_group_id
         self.timeout = timeout
         self.release_state = release_state
         self.param = param
@@ -148,15 +166,7 @@ class ProcessDefinition(Base):
 
         For now we just get from python side but not from java gateway side, so it may not correct.
         """
-        return User(
-            self._user,
-            configuration.USER_PASSWORD,
-            configuration.USER_EMAIL,
-            configuration.USER_PHONE,
-            self._tenant,
-            self._queue,
-            configuration.USER_STATE,
-        )
+        return User(name=self._user, tenant=self._tenant)
 
     @staticmethod
     def _parse_datetime(val: Any) -> Any:
@@ -331,8 +341,6 @@ class ProcessDefinition(Base):
         :class:`pydolphinscheduler.constants.ProcessDefinitionDefault`.
         """
         # TODO used metaclass for more pythonic
-        self.tenant.create_if_not_exists(self._queue)
-        # model User have to create after Tenant created
         self.user.create_if_not_exists()
         # Project model need User object exists
         self.project.create_if_not_exists(self._user)
@@ -365,6 +373,8 @@ class ProcessDefinition(Base):
             str(self.description) if self.description else "",
             json.dumps(self.param_json),
             json.dumps(self.schedule_json) if self.schedule_json else None,
+            self.warning_type,
+            self.warning_group_id,
             json.dumps(self.task_location),
             self.timeout,
             self.worker_group,
@@ -388,5 +398,7 @@ class ProcessDefinition(Base):
             self.name,
             "",
             self.worker_group,
+            self.warning_type,
+            self.warning_group_id,
             24 * 3600,
         )

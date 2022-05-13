@@ -28,7 +28,7 @@ public class TaskConstants {
 
     public static final String APPLICATION_REGEX = "application_\\d+_\\d+";
 
-    public static final String SETVALUE_REGEX = "\\$\\{setValue\\(([^)]*)\\)}";
+    public static final String SETVALUE_REGEX = "[\\$#]\\{setValue\\(([^)]*)\\)}";
 
     /**
      * string false
@@ -311,7 +311,7 @@ public class TaskConstants {
     /**
      * resource storage type
      */
-    public static final String RESOURCE_STORAGE_TYPE = "resource.storage.type";
+   // public static final String RESOURCE_STORAGE_TYPE = "resource.storage.type";
 
     /**
      * kerberos
@@ -397,5 +397,15 @@ public class TaskConstants {
     public static final String AWS_ACCESS_KEY_ID= "aws.access.key.id";
     public static final String AWS_SECRET_ACCESS_KEY= "aws.secret.access.key";
     public static final String AWS_REGION = "aws.region";
+
+    /**
+     * zeppelin config
+     */
+    public static final String ZEPPELIN_REST_URL= "zeppelin.rest.url";
+
+    /**
+     * conda config used by jupyter task plugin
+     */
+    public static final String CONDA_PATH = "conda.path";
 
 }

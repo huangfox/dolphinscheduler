@@ -17,16 +17,14 @@
 
 package org.apache.dolphinscheduler.server.worker.runner;
 
+import static org.apache.dolphinscheduler.common.Constants.SINGLE_SLASH;
+
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.dolphinscheduler.common.Constants;
-import org.apache.dolphinscheduler.common.enums.Event;
 import org.apache.dolphinscheduler.common.enums.WarningType;
-import org.apache.dolphinscheduler.common.utils.CommonUtils;
-import org.apache.dolphinscheduler.common.utils.DateUtils;
-import org.apache.dolphinscheduler.common.utils.HadoopUtils;
-import org.apache.dolphinscheduler.common.utils.JSONUtils;
-import org.apache.dolphinscheduler.common.utils.LoggerUtils;
-import org.apache.dolphinscheduler.common.utils.OSUtils;
-import org.apache.dolphinscheduler.common.utils.RetryerUtils;
+import org.apache.dolphinscheduler.common.exception.StorageOperateNoConfiguredException;
+import org.apache.dolphinscheduler.common.storage.StorageOperate;
+import org.apache.dolphinscheduler.common.utils.*;
 import org.apache.dolphinscheduler.plugin.task.api.AbstractTask;
 import org.apache.dolphinscheduler.plugin.task.api.TaskChannel;
 import org.apache.dolphinscheduler.plugin.task.api.TaskExecutionContext;
@@ -34,13 +32,10 @@ import org.apache.dolphinscheduler.plugin.task.api.TaskExecutionContextCacheMana
 import org.apache.dolphinscheduler.plugin.task.api.enums.ExecutionStatus;
 import org.apache.dolphinscheduler.plugin.task.api.model.Property;
 import org.apache.dolphinscheduler.plugin.task.api.model.TaskAlertInfo;
-import org.apache.dolphinscheduler.remote.command.Command;
-import org.apache.dolphinscheduler.remote.command.TaskExecuteAckCommand;
-import org.apache.dolphinscheduler.remote.command.TaskExecuteResponseCommand;
 import org.apache.dolphinscheduler.server.utils.ProcessUtils;
-import org.apache.dolphinscheduler.server.worker.cache.ResponseCache;
 import org.apache.dolphinscheduler.server.worker.processor.TaskCallbackService;
 import org.apache.dolphinscheduler.service.alert.AlertClientService;
+import org.apache.dolphinscheduler.service.exceptions.ServiceException;
 import org.apache.dolphinscheduler.service.task.TaskPluginManager;
 
 import org.apache.commons.collections.MapUtils;
@@ -48,20 +43,13 @@ import org.apache.commons.lang.StringUtils;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Delayed;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import com.github.rholder.retry.RetryException;
 
 /**
  * task scheduler thread
@@ -77,6 +65,16 @@ public class TaskExecuteThread implements Runnable, Delayed {
      * task instance
      */
     private TaskExecutionContext taskExecutionContext;
+
+    public StorageOperate getStorageOperate() {
+        return storageOperate;
+    }
+
+    public void setStorageOperate(StorageOperate storageOperate) {
+        this.storageOperate = storageOperate;
+    }
+
+    private StorageOperate storageOperate;
 
     /**
      * abstract task
@@ -121,37 +119,31 @@ public class TaskExecuteThread implements Runnable, Delayed {
 
     @Override
     public void run() {
-        TaskExecuteResponseCommand responseCommand = new TaskExecuteResponseCommand(taskExecutionContext.getTaskInstanceId(), taskExecutionContext.getProcessInstanceId());
         if (Constants.DRY_RUN_FLAG_YES == taskExecutionContext.getDryRun()) {
-            responseCommand.setStatus(ExecutionStatus.SUCCESS.getCode());
-            responseCommand.setEndTime(new Date());
+            taskExecutionContext.setCurrentExecutionStatus(ExecutionStatus.SUCCESS);
+            taskExecutionContext.setStartTime(new Date());
+            taskExecutionContext.setEndTime(new Date());
             TaskExecutionContextCacheManager.removeByTaskInstanceId(taskExecutionContext.getTaskInstanceId());
-            ResponseCache.get().cache(taskExecutionContext.getTaskInstanceId(), responseCommand.convert2Command(), Event.RESULT);
-            taskCallbackService.sendResult(taskExecutionContext.getTaskInstanceId(), responseCommand.convert2Command());
+            taskCallbackService.sendTaskExecuteResponseCommand(taskExecutionContext);
             return;
         }
 
         try {
             logger.info("script path : {}", taskExecutionContext.getExecutePath());
-            // check if the OS user exists
-            if (!OSUtils.getUserList().contains(taskExecutionContext.getTenantCode())) {
-                String errorLog = String.format("tenantCode: %s does not exist", taskExecutionContext.getTenantCode());
-                logger.error(errorLog);
-                responseCommand.setStatus(ExecutionStatus.FAILURE.getCode());
-                responseCommand.setEndTime(new Date());
-                return;
-            }
-
             if (taskExecutionContext.getStartTime() == null) {
                 taskExecutionContext.setStartTime(new Date());
             }
-            if (taskExecutionContext.getCurrentExecutionStatus() != ExecutionStatus.RUNNING_EXECUTION) {
-                changeTaskExecutionStatusToRunning();
-            }
             logger.info("the task begins to execute. task instance id: {}", taskExecutionContext.getTaskInstanceId());
 
+            // callback task execute running
+            taskExecutionContext.setCurrentExecutionStatus(ExecutionStatus.RUNNING_EXECUTION);
+            taskCallbackService.sendTaskExecuteRunningCommand(taskExecutionContext);
+
             // copy hdfs/minio file to local
-            downloadResource(taskExecutionContext.getExecutePath(), taskExecutionContext.getResources(), logger);
+            List<Pair<String, String>> fileDownloads = downloadCheck(taskExecutionContext.getExecutePath(), taskExecutionContext.getResources());
+            if (!fileDownloads.isEmpty()){
+                downloadResource(taskExecutionContext.getExecutePath(), logger, fileDownloads);
+            }
 
             taskExecutionContext.setEnvFile(CommonUtils.getSystemEnvPath());
             taskExecutionContext.setDefinedParams(getGlobalParamsMap());
@@ -164,7 +156,7 @@ public class TaskExecuteThread implements Runnable, Delayed {
 
             TaskChannel taskChannel = taskPluginManager.getTaskChannelMap().get(taskExecutionContext.getTaskType());
             if (null == taskChannel) {
-                throw new RuntimeException(String.format("%s Task Plugin Not Found,Please Check Config File.", taskExecutionContext.getTaskType()));
+                throw new ServiceException(String.format("%s Task Plugin Not Found,Please Check Config File.", taskExecutionContext.getTaskType()));
             }
             String taskLogName = LoggerUtils.buildTaskId(taskExecutionContext.getFirstSubmitTime(),
                     taskExecutionContext.getProcessDefineCode(),
@@ -187,29 +179,27 @@ public class TaskExecuteThread implements Runnable, Delayed {
             // task handle
             this.task.handle();
 
-            responseCommand.setStatus(this.task.getExitStatus().getCode());
-
             // task result process
             if (this.task.getNeedAlert()) {
-                sendAlert(this.task.getTaskAlertInfo(), responseCommand.getStatus());
+                sendAlert(this.task.getTaskAlertInfo(), this.task.getExitStatus().getCode());
             }
 
-            responseCommand.setEndTime(new Date());
-            responseCommand.setProcessId(this.task.getProcessId());
-            responseCommand.setAppIds(this.task.getAppIds());
-            responseCommand.setVarPool(JSONUtils.toJsonString(this.task.getParameters().getVarPool()));
+            taskExecutionContext.setCurrentExecutionStatus(ExecutionStatus.of(this.task.getExitStatus().getCode()));
+            taskExecutionContext.setEndTime(DateUtils.getCurrentDate());
+            taskExecutionContext.setProcessId(this.task.getProcessId());
+            taskExecutionContext.setAppIds(this.task.getAppIds());
+            taskExecutionContext.setVarPool(JSONUtils.toJsonString(this.task.getParameters().getVarPool()));
             logger.info("task instance id : {},task final status : {}", taskExecutionContext.getTaskInstanceId(), this.task.getExitStatus());
         } catch (Throwable e) {
             logger.error("task scheduler failure", e);
             kill();
-            responseCommand.setStatus(ExecutionStatus.FAILURE.getCode());
-            responseCommand.setEndTime(new Date());
-            responseCommand.setProcessId(task.getProcessId());
-            responseCommand.setAppIds(task.getAppIds());
+            taskExecutionContext.setCurrentExecutionStatus(ExecutionStatus.FAILURE);
+            taskExecutionContext.setEndTime(DateUtils.getCurrentDate());
+            taskExecutionContext.setProcessId(this.task.getProcessId());
+            taskExecutionContext.setAppIds(this.task.getAppIds());
         } finally {
             TaskExecutionContextCacheManager.removeByTaskInstanceId(taskExecutionContext.getTaskInstanceId());
-            ResponseCache.get().cache(taskExecutionContext.getTaskInstanceId(), responseCommand.convert2Command(), Event.RESULT);
-            taskCallbackService.sendResult(taskExecutionContext.getTaskInstanceId(), responseCommand.convert2Command());
+            taskCallbackService.sendTaskExecuteResponseCommand(taskExecutionContext);
             clearTaskExecPath();
         }
     }
@@ -234,7 +224,7 @@ public class TaskExecuteThread implements Runnable, Delayed {
                 return;
             }
 
-            if ("/".equals(execLocalPath)) {
+            if (SINGLE_SLASH.equals(execLocalPath)) {
                 logger.warn("task: {} exec local path is '/', direct deletion is not allowed", taskExecutionContext.getTaskName());
                 return;
             }
@@ -283,69 +273,49 @@ public class TaskExecuteThread implements Runnable, Delayed {
      * download resource file
      *
      * @param execLocalPath execLocalPath
-     * @param projectRes projectRes
+     * @param fileDownloads projectRes
      * @param logger logger
      */
-    private void downloadResource(String execLocalPath, Map<String, String> projectRes, Logger logger) {
-        if (MapUtils.isEmpty(projectRes)) {
-            return;
-        }
-
-        Set<Map.Entry<String, String>> resEntries = projectRes.entrySet();
-
-        for (Map.Entry<String, String> resource : resEntries) {
-            String fullName = resource.getKey();
-            String tenantCode = resource.getValue();
-            File resFile = new File(execLocalPath, fullName);
-            if (!resFile.exists()) {
-                try {
-                    // query the tenant code of the resource according to the name of the resource
-                    String resHdfsPath = HadoopUtils.getHdfsResourceFileName(tenantCode, fullName);
-
-                    logger.info("get resource file from hdfs :{}", resHdfsPath);
-                    HadoopUtils.getInstance().copyHdfsToLocal(resHdfsPath, execLocalPath + File.separator + fullName, false, true);
-                } catch (Exception e) {
-                    logger.error(e.getMessage(), e);
-                    throw new RuntimeException(e.getMessage());
-                }
-            } else {
-                logger.info("file : {} exists ", resFile.getName());
+    public void downloadResource(String execLocalPath, Logger logger, List<Pair<String, String>> fileDownloads) {
+        for (Pair<String, String> fileDownload : fileDownloads) {
+            try {
+                // query the tenant code of the resource according to the name of the resource
+                String fullName = fileDownload.getLeft();
+                String tenantCode = fileDownload.getRight();
+                String resHdfsPath = storageOperate.getResourceFileName(tenantCode, fullName);
+                logger.info("get resource file from hdfs :{}", resHdfsPath);
+                storageOperate.download(tenantCode, resHdfsPath, execLocalPath + File.separator + fullName, false, true);
+            } catch (Exception e) {
+                logger.error(e.getMessage(), e);
+                throw new ServiceException(e.getMessage());
             }
         }
     }
 
     /**
-     * send an ack to change the status of the task.
+     * download resource check
+     * @param execLocalPath
+     * @param projectRes
+     * @return
      */
-    private void changeTaskExecutionStatusToRunning() {
-        taskExecutionContext.setCurrentExecutionStatus(ExecutionStatus.RUNNING_EXECUTION);
-        Command ackCommand = buildAckCommand().convert2Command();
-        try {
-            RetryerUtils.retryCall(() -> {
-                taskCallbackService.sendAck(taskExecutionContext.getTaskInstanceId(), ackCommand);
-                return Boolean.TRUE;
-            });
-        } catch (ExecutionException | RetryException e) {
-            logger.error(e.getMessage(), e);
+    public List<Pair<String, String>> downloadCheck(String execLocalPath, Map<String, String> projectRes){
+        if (MapUtils.isEmpty(projectRes)) {
+            return Collections.emptyList();
         }
-    }
-
-    /**
-     * build ack command.
-     *
-     * @return TaskExecuteAckCommand
-     */
-    private TaskExecuteAckCommand buildAckCommand() {
-        TaskExecuteAckCommand ackCommand = new TaskExecuteAckCommand();
-        ackCommand.setTaskInstanceId(taskExecutionContext.getTaskInstanceId());
-        ackCommand.setStatus(taskExecutionContext.getCurrentExecutionStatus().getCode());
-        ackCommand.setStartTime(taskExecutionContext.getStartTime());
-        ackCommand.setLogPath(taskExecutionContext.getLogPath());
-        ackCommand.setHost(taskExecutionContext.getHost());
-
-        ackCommand.setExecutePath(taskExecutionContext.getExecutePath());
-
-        return ackCommand;
+        List<Pair<String, String>> downloadFile = new ArrayList<>();
+        projectRes.forEach((key, value) -> {
+            File resFile = new File(execLocalPath, key);
+            boolean notExist = !resFile.exists();
+            if (notExist){
+                downloadFile.add(Pair.of(key, value));
+            } else{
+                logger.info("file : {} exists ", resFile.getName());
+            }
+        });
+        if (!downloadFile.isEmpty() && !PropertyUtils.getResUploadStartupState()){
+            throw new StorageOperateNoConfiguredException("Storage service config does not exist!");
+        }
+        return downloadFile;
     }
 
     /**
@@ -369,6 +339,10 @@ public class TaskExecuteThread implements Runnable, Delayed {
             return 1;
         }
         return Long.compare(this.getDelay(TimeUnit.MILLISECONDS), o.getDelay(TimeUnit.MILLISECONDS));
+    }
+
+    public AbstractTask getTask() {
+        return task;
     }
 
     private void preBuildBusinessParams() {

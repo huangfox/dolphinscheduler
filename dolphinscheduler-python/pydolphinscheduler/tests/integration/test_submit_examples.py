@@ -15,31 +15,15 @@
 # specific language governing permissions and limitations
 # under the License.
 
-"""Test whether success submit examples DAG to PythonGatewayServer."""
+"""Test whether success submit examples DAG to PythonGatewayService."""
 
 from pathlib import Path
+from subprocess import Popen
 
 import pytest
 
 from tests.testing.constants import ignore_exec_examples
-from tests.testing.docker_wrapper import DockerWrapper
 from tests.testing.path import path_example
-
-
-@pytest.fixture(scope="module")
-def setup_docker():
-    """Set up and teardown docker env for  fixture."""
-    docker_wrapper = DockerWrapper(
-        image="apache/dolphinscheduler-standalone-server:ci",
-        container_name="ci-dolphinscheduler-standalone-server",
-    )
-    ports = {"25333/tcp": 25333}
-    container = docker_wrapper.run_until_log(
-        log="Started StandaloneServer in", tty=True, ports=ports
-    )
-    assert container is not None
-    yield
-    docker_wrapper.remove_container()
 
 
 @pytest.mark.parametrize(
@@ -50,9 +34,11 @@ def setup_docker():
         if path.is_file() and path.stem not in ignore_exec_examples
     ],
 )
-def test_exec_white_list_example(setup_docker, example_path: Path):
-    """Test execute examples and submit DAG to PythonGatewayServer."""
+def test_exec_white_list_example(example_path: Path):
+    """Test execute examples and submit DAG to PythonGatewayService."""
     try:
-        exec(example_path.read_text())
+        # Because our task decorator used module ``inspect`` to get the source, and it will
+        # raise IOError when call it by built-in function ``exec``, so we change to ``subprocess.Popen``
+        Popen(["python", str(example_path)])
     except Exception:
         raise Exception("Run example %s failed.", example_path.stem)

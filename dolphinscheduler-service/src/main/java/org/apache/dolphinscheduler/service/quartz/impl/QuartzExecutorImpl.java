@@ -18,8 +18,8 @@
 package org.apache.dolphinscheduler.service.quartz.impl;
 
 import static org.apache.dolphinscheduler.common.Constants.PROJECT_ID;
-import static org.apache.dolphinscheduler.common.Constants.QUARTZ_JOB_GROUP_PRIFIX;
-import static org.apache.dolphinscheduler.common.Constants.QUARTZ_JOB_PRIFIX;
+import static org.apache.dolphinscheduler.common.Constants.QUARTZ_JOB_GROUP_PREFIX;
+import static org.apache.dolphinscheduler.common.Constants.QUARTZ_JOB_PREFIX;
 import static org.apache.dolphinscheduler.common.Constants.SCHEDULE;
 import static org.apache.dolphinscheduler.common.Constants.SCHEDULE_ID;
 import static org.apache.dolphinscheduler.common.Constants.UNDERLINE;
@@ -69,14 +69,24 @@ public class QuartzExecutorImpl implements QuartzExecutor {
      * @param projectId projectId
      * @param schedule schedule
      */
+    @Override
     public void addJob(Class<? extends Job> clazz, int projectId, final Schedule schedule) {
         String jobName = this.buildJobName(schedule.getId());
         String jobGroupName = this.buildJobGroupName(projectId);
-        Date startDate = schedule.getStartTime();
-        Date endDate = schedule.getEndTime();
+
         Map<String, Object> jobDataMap = this.buildDataMap(projectId, schedule);
         String cronExpression = schedule.getCrontab();
         String timezoneId = schedule.getTimezoneId();
+
+        /**
+         * transform from server default timezone to schedule timezone
+         * e.g. server default timezone is `UTC`
+         * user set a schedule with startTime `2022-04-28 10:00:00`, timezone is `Asia/Shanghai`,
+         * api skip to transform it and save into databases directly, startTime `2022-04-28 10:00:00`, timezone is `UTC`, which actually added 8 hours,
+         * so when add job to quartz, it should recover by transform timezone
+         */
+        Date startDate = DateUtils.transformTimezoneDate(schedule.getStartTime(), timezoneId);
+        Date endDate = DateUtils.transformTimezoneDate(schedule.getEndTime(), timezoneId);
 
         lock.writeLock().lock();
         try {
@@ -109,8 +119,8 @@ public class QuartzExecutorImpl implements QuartzExecutor {
              */
             CronTrigger cronTrigger = newTrigger()
                     .withIdentity(triggerKey)
-                    .startAt(DateUtils.getTimezoneDate(startDate, timezoneId))
-                    .endAt(DateUtils.getTimezoneDate(endDate, timezoneId))
+                    .startAt(startDate)
+                    .endAt(endDate)
                     .withSchedule(
                             cronSchedule(cronExpression)
                                     .withMisfireHandlingInstructionDoNothing()
@@ -142,14 +152,17 @@ public class QuartzExecutorImpl implements QuartzExecutor {
         }
     }
 
-    public String buildJobName(int scheduleId) {
-        return QUARTZ_JOB_PRIFIX + UNDERLINE + scheduleId;
+    @Override
+    public String buildJobName(int processId) {
+        return QUARTZ_JOB_PREFIX + UNDERLINE + processId;
     }
 
+    @Override
     public String buildJobGroupName(int projectId) {
-        return QUARTZ_JOB_GROUP_PRIFIX + UNDERLINE + projectId;
+        return QUARTZ_JOB_GROUP_PREFIX + UNDERLINE + projectId;
     }
 
+    @Override
     public Map<String, Object> buildDataMap(int projectId, Schedule schedule) {
         Map<String, Object> dataMap = new HashMap<>(8);
         dataMap.put(PROJECT_ID, projectId);
